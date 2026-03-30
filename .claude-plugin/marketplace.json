@@ -1,0 +1,21 @@
+{
+  "name": "curtiskelsey-plugins",
+  "owner": {
+    "name": "Curtis Kelsey",
+    "url": "https://github.com/curtiskelsey"
+  },
+  "plugins": [
+    {
+      "name": "calendar-tools",
+      "source": "./plugins/ics-calendar-plugin",
+      "description": "Query a calendar via ICS feed — search meetings, find 1:1s, check schedule",
+      "version": "1.0.0"
+    },
+    {
+      "name": "tool-audit",
+      "source": "./plugins/tool-audit-plugin",
+      "description": "Audit log all Claude Code tool and command usage to daily JSONL files, with commands to review and summarize activity",
+      "version": "1.0.0"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "calendar": {
+      "command": "/bin/bash",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/servers/run_server.sh"
+      ]
+    }
+  }
+}

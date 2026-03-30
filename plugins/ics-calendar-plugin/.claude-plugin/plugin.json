@@ -1,5 +1,11 @@
 {
   "name": "calendar-tools",
   "version": "1.0.0",
-  "description": "Query a calendar via ICS feed — search meetings, find 1:1s, check schedule"
+  "description": "Query a calendar via ICS feed — search meetings, find 1:1s, check schedule",
+  "author": {
+    "name": "Curtis Kelsey",
+    "url": "https://github.com/curtiskelsey"
+  },
+  "license": "MIT",
+  "setup": "cd ${CLAUDE_PLUGIN_ROOT} && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
 }
