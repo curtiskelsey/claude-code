@@ -1,0 +1,27 @@
+{
+  "description": "Log all tool usage (successes and failures) to daily JSONL audit files at ~/.claude/tool-audit-YYYY-MM-DD.jsonl",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/log_tool_use.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/log_tool_failure.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
