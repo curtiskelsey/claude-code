@@ -1,5 +1,10 @@
 {
   "name": "tool-audit",
   "version": "1.0.0",
-  "description": "Audit log all Claude Code tool and command usage to daily JSONL files, with commands to review and summarize activity"
+  "description": "Audit log all Claude Code tool and command usage to daily JSONL files, with commands to review and summarize activity",
+  "author": {
+    "name": "Curtis Kelsey",
+    "url": "https://github.com/curtiskelsey"
+  },
+  "license": "MIT"
 }
