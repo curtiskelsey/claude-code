@@ -35,6 +35,7 @@ from urllib.error import URLError
 
 try:
     from icalendar import Calendar
+    from dateutil.rrule import rrulestr
 except ImportError:
     print("Missing dependency. Install with: pip3 install icalendar")
     sys.exit(1)
@@ -128,45 +129,120 @@ def normalize_dt(dt_prop):
     return dt, False
 
 
-def parse_all_events(ics_text: str) -> list:
-    """Parse every VEVENT from the ICS text into a list of dicts."""
-    cal = Calendar.from_ical(ics_text)
-    events = []
+def _event_fields(component):
+    """Extract non-date metadata from a VEVENT component."""
+    summary = str(component.get("summary", "No title"))
+    location = str(component.get("location", "")) or None
+    description = str(component.get("description", "")) or None
+    organizer = component.get("organizer")
+    if organizer:
+        organizer = str(organizer).replace("mailto:", "")
+    attendees_raw = component.get("attendee", [])
+    if not isinstance(attendees_raw, list):
+        attendees_raw = [attendees_raw]
+    attendees = [str(a).replace("mailto:", "") for a in attendees_raw]
+    return summary, location, description, organizer, attendees
 
-    for component in cal.walk():
-        if component.name != "VEVENT":
-            continue
 
-        dtstart = component.get("dtstart")
-        if not dtstart:
-            continue
+def _expand_component(component, skip_dates=None):
+    """Return event dicts for a VEVENT, expanding RRULE into individual occurrences.
 
-        start, is_all_day = normalize_dt(dtstart)
-        end, _ = normalize_dt(component.get("dtend"))
+    skip_dates: set of date objects to omit (dates covered by RECURRENCE-ID overrides).
+    """
+    dtstart_prop = component.get("dtstart")
+    if not dtstart_prop:
+        return []
 
-        summary = str(component.get("summary", "No title"))
-        location = str(component.get("location", "")) or None
-        description = str(component.get("description", "")) or None
+    start, is_all_day = normalize_dt(dtstart_prop)
+    summary, location, description, organizer, attendees = _event_fields(component)
 
-        organizer = component.get("organizer")
-        if organizer:
-            organizer = str(organizer).replace("mailto:", "")
+    dtend_prop = component.get("dtend")
+    if dtend_prop:
+        end_dt, _ = normalize_dt(dtend_prop)
+        duration = end_dt - start
+    else:
+        dur_prop = component.get("duration")
+        duration = dur_prop.dt if dur_prop and hasattr(dur_prop, "dt") else timedelta(0)
+        end_dt = start + duration
 
-        attendees_raw = component.get("attendee", [])
-        if not isinstance(attendees_raw, list):
-            attendees_raw = [attendees_raw]
-        attendees = [str(a).replace("mailto:", "") for a in attendees_raw]
-
-        events.append({
+    def make_event(occ_start, occ_end):
+        return {
             "summary": summary,
-            "start": start,
-            "end": end,
+            "start": occ_start,
+            "end": occ_end,
             "all_day": is_all_day,
             "location": location,
             "description": description,
             "organizer": organizer,
             "attendees": attendees,
-        })
+        }
+
+    rrule_prop = component.get("rrule")
+    if not rrule_prop:
+        return [make_event(start, end_dt)]
+
+    # Pass the already-parsed `start` as dtstart rather than reconstructing a
+    # DTSTART line — icalendar already resolved Windows tz names (e.g. "Central
+    # Standard Time") which rrulestr does not understand.
+    rrule_ical = rrule_prop.to_ical().decode("utf-8")
+    full_rule = f"RRULE:{rrule_ical}"
+
+    # Collect EXDATE dates (cancelled occurrences)
+    exdate_dates = set()
+    exdate_raw = component.get("exdate")
+    if exdate_raw:
+        if not isinstance(exdate_raw, list):
+            exdate_raw = [exdate_raw]
+        for ex in exdate_raw:
+            dts = ex.dts if hasattr(ex, "dts") else [ex]
+            for dt_item in dts:
+                exc_dt, _ = normalize_dt(dt_item)
+                exdate_dates.add(exc_dt.date())
+
+    now = datetime.now().astimezone()
+    window_start = now - timedelta(days=365)
+    window_end = now + timedelta(days=365)
+
+    try:
+        rule = rrulestr(full_rule, dtstart=start)
+        occurrences = list(rule.between(window_start, window_end, inc=True))
+    except Exception:
+        return [make_event(start, end_dt)]
+
+    result = []
+    for occ in occurrences:
+        if occ.tzinfo is None:
+            occ = occ.astimezone()
+        occ_date = occ.date()
+        if occ_date in exdate_dates:
+            continue
+        if skip_dates and occ_date in skip_dates:
+            continue
+        result.append(make_event(occ, occ + duration))
+
+    return result
+
+
+def parse_all_events(ics_text: str) -> list:
+    """Parse every VEVENT from the ICS text into a list of dicts, expanding recurrences."""
+    cal = Calendar.from_ical(ics_text)
+    components = [c for c in cal.walk() if c.name == "VEVENT"]
+
+    # Collect dates covered by RECURRENCE-ID overrides per UID so the master
+    # RRULE expansion doesn't double-emit those occurrences.
+    uid_overrides: dict = {}
+    for comp in components:
+        if comp.get("recurrence-id"):
+            uid = str(comp.get("uid", ""))
+            rec_dt, _ = normalize_dt(comp.get("recurrence-id"))
+            uid_overrides.setdefault(uid, set()).add(rec_dt.date())
+
+    events = []
+    for component in components:
+        uid = str(component.get("uid", ""))
+        # Override events are single instances; master events skip overridden dates
+        skip = uid_overrides.get(uid) if not component.get("recurrence-id") else None
+        events.extend(_expand_component(component, skip_dates=skip))
 
     events.sort(key=lambda e: e["start"])
     return events
